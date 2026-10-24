@@ -1,0 +1,149 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Суд друзей</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&family=Playfair+Display:wght@900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#3b1a2e;--pan:#58263f;--ink:#fbf1de;--gold:#f2b32c;--red:#e4572e;--dim:#d9bfc8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:600 16px/1.4 Nunito,system-ui,sans-serif;padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);display:flex;justify-content:center}
+main{width:100%;max-width:480px;padding:12px 0 28px}
+h1{font:900 34px/1.05 'Playfair Display',Georgia,serif;margin:10px 0;color:var(--gold)}
+canvas{width:100%;aspect-ratio:360/440;border-radius:16px;display:block;background:#5b2340}
+button,input,textarea{font:inherit;border-radius:14px;border:0;padding:12px 16px}
+button{background:var(--gold);color:#3b1a2e;font-weight:900;cursor:pointer;min-height:48px}
+button.alt{background:var(--pan);color:var(--ink)}button.red{background:var(--red);color:#fff}button.on{outline:3px solid #fff}
+button:disabled{opacity:.4}
+input,textarea{background:var(--pan);color:var(--ink);width:100%;margin:4px 0}
+textarea{resize:none;min-height:96px}
+.row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+.card{background:var(--pan);border-radius:16px;padding:14px;margin:10px 0}
+.chip{display:inline-block;margin:3px 6px 3px 0;padding:4px 12px;border-radius:99px;background:#7a3a58;font-weight:800}
+small{color:var(--dim)}
+</style></head><body><main>
+<canvas id="cv" width="720" height="880"></canvas><div id="ui"></div></main>
+<script>
+const $=s=>document.querySelector(s),app=$('#ui'),cv=$('#cv'),cx=cv.getContext('2d');
+const sid=localStorage.sid||(localStorage.sid=crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now());
+let pap=[],pets=0,POS={},ws,S=null,want=null,err='',pend=null,dr={},bub={},photos={},fx={obj:0,lie:0,by:''};
+const E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nm=id=>(S.players.find(p=>p.id==id)||{}).name||'';
+const tx=(t,o)=>ws&&ws.readyState==1&&ws.send(JSON.stringify({t,...o}));
+const RN={judge:'Судья',pros:'Прокурор',def:'Адвокат',accused:'Обвиняемый',victim:'Потерпевший',witness:'Свидетель',journalist:'Журналист',bailiff:'Пристав'};
+const HN=['Дворовый кот','Британка','Кот в смокинге','Толстячок','Парень','Енот','Лемур'];
+const myRole=()=>Object.keys(RN).find(k=>S.roles[k]==S.me)||'juror';
+function connect(create){ws=new WebSocket(location.origin.replace(/^http/,'ws'));
+ ws.onopen=()=>ws.send(JSON.stringify({t:'join',room:want.room,name:want.name,id:sid,create}));
+ ws.onmessage=e=>{const m=JSON.parse(e.data);
+  if(m.t=='s'){S=m.s;S.players.forEach(p=>p.penAt=Date.now()+p.pen);err='';history.replaceState(0,'','?r='+S.code);render()}
+  else if(m.t=='err'){err=m.e;want=null;S=null;ws.close();render()}
+  else if(m.t=='say')bub[m.by]={t:m.text,u:Date.now()+3500};
+  else if(m.t=='obj'){fx.obj=Date.now();fx.by=nm(m.by)}
+  else if(m.t=='lie'){fx.lie=Date.now();fx.by=nm(m.by)}
+  else if(m.t=='news')fx.news={t:m.text,u:Date.now()+6000};else if(m.t=='hush'){fx.hush=Date.now();fx.by=''}else if(m.t=='fine'){fx.fine=Date.now();fx.by=nm(m.to)}else if(m.t=='paper')pap.push({f:m.by,t:m.to,s:Date.now()});else if(m.t=='pet')pets=Date.now()+2000;
+  else if(m.t=='ev'){photos={};if(m.photo){const i=new Image();i.onload=()=>photos[m.id]=i;i.src=m.photo}}};
+ ws.onclose=()=>{if(want)setTimeout(()=>connect(false),1500)}}
+setInterval(()=>tx('ping'),25000);
+function home(){const r=(new URLSearchParams(location.search).get('r')||'').toUpperCase();
+ app.innerHTML=`<h1>Суд друзей</h1><p>Суд над настоящими историями. От 3 до 9 игроков, вход по ссылке.</p>
+ ${err?`<div class=card>${E(err)}</div>`:''}<input id=nm maxlength=14 placeholder="Твоё имя" value="${E(localStorage.nm||'')}">
+ ${r?`<div class=row><button id=jn>Войти в комнату ${E(r)}</button></div>`:`<div class=row><button id=mk>Создать комнату</button></div><div class=row><input id=cd maxlength=5 placeholder="Код комнаты"><button class=alt id=jn>Войти</button></div>`}`;
+ const go=(room,c)=>{const name=$('#nm').value.trim()||'Игрок';localStorage.nm=name;want={room,name};connect(c)};
+ if($('#mk'))$('#mk').onclick=()=>go(Math.random().toString(36).slice(2,7).toUpperCase(),true);
+ $('#jn').onclick=()=>{const c=$('#cd')?$('#cd').value:r;if(c)go(c,false)}}
+const chip=p=>`<span class=chip>${E(p.name)}${p.on?'':' 💤'}</span>`;
+function pic(f){return new Promise(r=>{const i=new Image();i.onload=()=>{const k=Math.min(1,640/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.6))};i.src=URL.createObjectURL(f)})}
+function render(){
+ app.querySelectorAll('[data-d]').forEach(e=>dr[e.id]=e.value);
+ if(!S)return home();
+ const me=S.me,R=S.roles,host=S.host==me,P=S.phase,mr=myRole(),n=S.players.length;let h='';
+ if(P=='lobby'){const tk=i=>S.players.some(p=>p.hero==i&&p.id!=me),mine=(S.players.find(p=>p.id==me)||{}).hero;
+  h=`<h1>Комната ${S.code}</h1><div class=card>Отправь друзьям ссылку:<div class=row><button id=cp>Поделиться ссылкой</button></div></div>
+  <div class=card><b>Твой герой</b><div class=row>${HN.map((x,i)=>`<button class="alt ${i==mine?'on':''}" data-h=${i} ${tk(i)?'disabled':''}>${x}</button>`).join('')}</div></div>
+  <div class=card>${S.players.map(chip).join('')}<br><small>${n} из 9. Нужно минимум 3, судья тоже игрок.</small></div>
+  ${host?`<button id=bg ${n<3?'disabled':''}>Начать</button>`:'<small>Ждём, пока хозяин начнёт игру</small>'}`}
+ else if(P=='write'){h=`<h1>Напишите дело</h1>`+(S.iWrote?`<div class=card>Дело отправлено. Автора не узнает никто.<br><small>Написали ${S.wrote} из ${n}</small></div>`
+  :`<div class=card>Что случилось и почему начался суд? Имя автора скрыто.<textarea id=cs data-d maxlength=220 placeholder="Напиши дело"></textarea><button id=sc>Отправить</button></div>`)+(host&&S.wrote?`<button class=alt id=sn>Начать суд сейчас</button>`:'')}
+ else if(P=='end')h=`<h1>Все дела разобраны</h1><div class=card>Спасибо за суд!</div>${host?'<button id=ag>Сыграть ещё</button>':''}`;
+ else{const sp=S.lamp=='none'?null:R[S.lamp],mine=sp==me,v=S.verdict;
+  h=`<div class=card><small>Дело (осталось ${S.left})</small><div style="font-size:18px;font-weight:900">${E(S.case)}</div><small>Ты — ${RN[mr]||'присяжный'}</small></div>`;
+  if(P=='verdict')h+=`<div class=card><b style="font-size:20px">${v.guilty?'ВИНОВЕН':'НЕВИНОВЕН'}</b></div>${host?'<button id=nx>Следующее дело</button>':''}`;
+  else{
+   if(mr=='judge')h+=`<div class=card><b>Слово даёт судья</b><div class=row><button class=red data-l=pros>Прокурору</button><button data-l=def style="background:#4da3ff">Адвокату</button><button data-l=witness style="background:#5fd18a">Свидетелю</button><button class=alt data-l=none>Тишина</button></div>
+    <div class=row><button id=gu>Виновен</button><button class=alt id=ng>Невиновен</button></div></div>`;
+   else h+=`<div class=card><small>${sp?'Говорит: '+E(nm(sp))+(S.lamp=='pros'?' (обвинение)':S.lamp=='def'?' (защита)':' (свидетель)'):'Слова никому не дано'}</small></div>`;
+   if(mine)h+=`<div class=card><b>Твоё показание</b><input id=f1 data-d maxlength=80 placeholder="Когда это было"><input id=f2 data-d maxlength=80 placeholder="Где"><textarea id=f3 data-d maxlength=200 placeholder="Что сделал или чего не делал"></textarea><input id=f4 data-d maxlength=80 placeholder="Кто может подтвердить"><input id=ph type=file accept="image/*"><button id=ss>На проектор</button></div>`;
+   if(['pros','def','accused'].includes(mr))h+=`<button class=red id=ob style="width:100%">ПРОТЕСТУЮ!</button>`;
+   h+=`<div class=card><div class=row>${['6-7','Шаришь','Не шаришь','Тайнайсаше'].map(x=>`<button class=alt data-e="${x}">${x}</button>`).join('')}</div>
+    <div class=row><input id=sy data-d maxlength=40 placeholder="Реплика над головой"><button id=sd style="flex:0">→</button></div><button class=red id=li style="width:100%">Враньё!</button></div>`}
+  h+=extras(mr)+S.log.map(c=>`<div><small>${{pros:'Обв.',def:'Защ.',witness:'Свид.',news:'Новости'}[c.side]}: ${E(c.text)}</small></div>`).join('');
+  if(host&&P=='trial')h+=`<div class=row><button class=alt id=cl>Убрать улику</button><button class=alt id=nx>Пропустить дело</button></div>`}
+ if(dr.np===undefined)dr.np=localStorage['np'+S.code]||'';app.innerHTML=h;for(const k in dr){const e=$('#'+k);if(e)e.value=dr[k]}
+ const b=(id,f)=>{const e=$('#'+id);if(e)e.onclick=f};
+ b('cp',e=>{const u=location.origin+'/?r='+S.code;(navigator.share?navigator.share({title:'Суд друзей',url:u}):navigator.clipboard.writeText(u)).then(()=>e.target.textContent='Готово!').catch(()=>{})});
+ b('bg',()=>tx('begin'));b('sn',()=>tx('startnow'));b('nx',()=>tx('next'));b('ag',()=>tx('again'));b('cl',()=>tx('clear'));
+ b('gu',()=>tx('verdict',{g:1}));b('ng',()=>tx('verdict',{g:0}));b('ob',()=>tx('obj'));b('li',()=>tx('lie'));
+ b('sc',()=>{const t=$('#cs').value.trim();if(t.length>=3){delete dr.cs;tx('case',{text:t})}});
+ b('sd',()=>{const t=$('#sy').value.trim();if(t){$('#sy').value='';dr.sy='';tx('say',{text:t})}});
+ b('ss',async()=>{const f=$('#ph').files[0],g=i=>$('#'+i).value.trim();const photo=f?await pic(f):null;
+  tx('stmt',{when:g('f1'),where:g('f2'),what:g('f3'),who:g('f4'),photo});['f1','f2','f3','f4'].forEach(k=>delete dr[k])});
+ app.querySelectorAll('[data-h]').forEach(e=>e.onclick=()=>tx('hero',{i:+e.dataset.h}));
+ app.querySelectorAll('[data-l]').forEach(e=>e.onclick=()=>tx('lamp',{v:e.dataset.l}));
+ app.querySelectorAll('[data-e]').forEach(e=>e.onclick=()=>tx('say',{text:e.dataset.e}));b('hu',()=>tx('hush'));b('ns',()=>{const t=$('#nw').value.trim();if(t){delete dr.nw;tx('news',{text:t})}});app.querySelectorAll('[data-f]').forEach(e=>e.onclick=()=>tx('fine',{to:e.dataset.f}));app.querySelectorAll('[data-p]').forEach(e=>e.onclick=()=>tx('paper',{to:e.dataset.p}));const np=$('#np');if(np)np.oninput=()=>localStorage['np'+S.code]=np.value}
+function extras(mr){let x='';if(S.phase!='trial')return x;const o=S.players.filter(p=>p.id!=S.me),bt=a=>o.map(p=>`<button class=alt data-${a}=${p.id}>${E(p.name)}</button>`).join('');
+ if(mr=='judge')x+=`<div class=card><b>Штраф на 30 секунд</b><div class=row>${bt('f')}</div><button class=alt id=hu style="width:100%">Тишина в зале!</button></div>`;
+ if(mr=='bailiff')x+=`<button class=alt id=hu style="width:100%;margin:8px 0">Тишина в зале!</button>`;
+ if(mr=='journalist'){const k=3-S.news.length;x+=k>0?`<div class=card><b>Срочные новости (осталось ${k})</b><input id=nw data-d maxlength=100 placeholder="Заголовок"><button id=ns>Опубликовать</button></div>`:`<div class=card><small>Новости закончились</small></div>`}
+ if(mr!='judge')x+=`<div class=card><b>Бросить бумажку</b><div class=row>${bt('p')}</div></div>`;
+ if(['judge','pros','def'].includes(mr))x+=`<div class=card><b>Блокнот</b> <small>виден только тебе</small><textarea id=np data-d maxlength=600 placeholder="Заметки"></textarea></div>`;
+ return x}
+const H=[{c:'#f2a65a',a:'p',m:'#ffe8c8',st:1},{c:'#9aa3b5',a:'l',m:'#b3bacb'},{c:'#2a2a3c',a:'p',m:'#fff',bow:1},{k:'#f1c39b',h:'#5a3b2e',sh:'#5fd1b0',gl:1,fat:1},{k:'#e9b992',h:'#2b2438',sh:'#6fb1ff'},{c:'#8d90a6',a:'r',m:'#f1f2f7',mask:1},{c:'#9ea3b8',a:'r',m:'#f4f4fa',lem:1}];
+const el=(a,b,rx,ry,f)=>{cx.fillStyle=f;cx.beginPath();cx.ellipse(a,b,rx,ry,0,0,7);cx.fill()};
+const tri=(a,b,c,d,e,f)=>{cx.beginPath();cx.moveTo(a,b);cx.lineTo(c,d);cx.lineTo(e,f);cx.fill()};
+function hero(i,x,y,s,t,sp,wig){const d=H[(i||0)%7];cx.save();cx.translate(x,y+(sp?Math.sin(t/110)*3:Math.sin(t/700+x)*1.2));cx.scale(s,s);
+ if(d.k){el(0,58,d.fat?44:28,34,d.sh);el(0,0,24,24,d.k);cx.fillStyle=d.h;cx.beginPath();cx.ellipse(0,-10,25,15,0,Math.PI,0);cx.fill();
+  if(d.gl){cx.strokeStyle='#2b2438';cx.lineWidth=2.5;cx.beginPath();cx.arc(-10,-1,8,0,7);cx.moveTo(18,-1);cx.arc(10,-1,8,0,7);cx.stroke()}}
+ else{el(0,58,28,32,d.c);cx.fillStyle=d.c;
+  if(d.a=='p'){tri(-25,-12,-21,-42,-4,-26);tri(25,-12,21,-42,4,-26)}else if(d.a=='r'){el(-24,-24,8,8,d.c);el(24,-24,8,8,d.c)}else{el(-31,-8,8,11,'#8b93a8');el(31,-8,8,11,'#8b93a8')}
+  el(0,0,d.a=='l'?31:27,27,d.c);if(d.lem){el(0,4,17,17,d.m);el(-10,-2,9,11,'#2a2a3c');el(10,-2,9,11,'#2a2a3c')}else el(0,10,12,9,d.m);
+  if(d.mask){cx.fillStyle='#33344a';cx.fillRect(-27,-9,54,13)}
+  if(d.st){cx.strokeStyle='#c9782f';cx.lineWidth=3;cx.beginPath();cx.moveTo(0,-26);cx.lineTo(0,-17);cx.moveTo(-8,-24);cx.lineTo(-6,-16);cx.moveTo(8,-24);cx.lineTo(6,-16);cx.stroke()}
+  if(d.bow){cx.fillStyle='#ff7b9c';tri(0,32,-13,25,-13,39);tri(0,32,13,25,13,39)}}
+ const bl=(t%4000)>3850?.8:4.5;el(-9,-1,4.5,bl,'#fff');el(9,-1,4.5,bl,'#fff');el(-9,-1,2,Math.min(2.2,bl),'#1a1a24');el(9,-1,2,Math.min(2.2,bl),'#1a1a24');
+ el(0,13,4,sp?2+Math.abs(Math.sin(t/90))*3:1,'#5b1a1a');
+ if(wig){cx.fillStyle='#f4efe6';cx.beginPath();cx.ellipse(0,-14,30,16,0,Math.PI,0);cx.fill();el(-30,-4,7,9,'#f4efe6');el(30,-4,7,9,'#f4efe6');}
+ cx.restore()}
+function wrap(s,n){const o=[];let l='';for(const w of String(s).split(' ')){if((l+' '+w).length>n){o.push(l);l=w}else l=l?l+' '+w:w}o.push(l);return o.slice(0,3)}
+function bubble(x,y,t){cx.font='800 10.5px Nunito,sans-serif';const L=wrap(t,22),w=Math.min(150,Math.max(...L.map(l=>cx.measureText(l).width))+16),hh=L.length*13+8;
+ const bx=Math.max(4,Math.min(356-w,x-w/2));cx.fillStyle='#fff';cx.fillRect(bx,y-hh,w,hh);cx.fillStyle='#fff';tri(x-5,y,x+5,y,x,y+7);
+ cx.fillStyle='#3b1a2e';cx.textAlign='center';L.forEach((l,i)=>cx.fillText(l,bx+w/2,y-hh+14+i*13))}
+function draw(t){requestAnimationFrame(draw);const t0=Date.now();cx.setTransform(2,0,0,2,0,0);cx.textAlign='center';
+ cx.fillStyle='#5b2340';cx.fillRect(0,0,360,440);cx.fillStyle='#7a4a36';cx.fillRect(0,196,360,104);cx.fillStyle='#b57a5a';cx.fillRect(0,194,360,5);cx.fillStyle='#3b1d2f';cx.fillRect(0,300,360,140);
+ cx.fillStyle='#8fc7ea';[18,326].forEach(x=>{cx.fillRect(x,40,16,70);cx.beginPath();cx.arc(x+8,40,8,Math.PI,0);cx.fill()});
+ cx.fillStyle='#f7f3ff';cx.fillRect(60,12,240,122);cx.fillStyle='#e8dcc8';cx.fillRect(68,18,224,88);
+ if(S){const R=S.roles,pj=S.proj,ph=pj&&photos[pj.id],lob=!['trial','verdict'].includes(S.phase),pos={};
+  if(ph){const k=Math.min(224/ph.width,88/ph.height);cx.drawImage(ph,180-ph.width*k/2,62-ph.height*k/2,ph.width*k,ph.height*k)}
+  else{cx.fillStyle='#8a7a6a';cx.font='700 12px Nunito,sans-serif';cx.fillText(pj?'Без фото':'Улик пока нет',180,66)}
+  if(pj){cx.fillStyle='#58263f';cx.fillRect(68,110,224,20);cx.fillStyle='#fbf1de';cx.font='800 10px Nunito,sans-serif';cx.fillText((pj.what||pj.where||'').slice(0,52),180,123);
+   if(pj.lies){cx.fillStyle='#e4572e';cx.fillText('Враньё: '+pj.lies,180,104)}}
+  const jur=[];S.players.forEach(p=>{if(lob)jur.push(p);else if(p.id==R.judge)pos[p.id]=[180,176,.8,'Судья'];else if(p.id==R.pros)pos[p.id]=[40,272,.75,'Прокурор'];else if(p.id==R.victim)pos[p.id]=[110,272,.75,'Потерпевший'];
+   else if(p.id==R.accused)pos[p.id]=[250,272,.75,'Обвиняемый'];else if(p.id==R.def)pos[p.id]=[320,272,.75,'Адвокат'];else if(p.id==R.witness)pos[p.id]=[180,326,.7,'Свидетель'];else if(p.id==R.journalist)pos[p.id]=[70,172,.65,'Журналист'];else if(p.id==R.bailiff)pos[p.id]=[290,172,.65,'Пристав'];else jur.push(p)});
+  jur.forEach((p,i)=>pos[p.id]=[360*(i+1)/(jur.length+1),lob?340:392,lob?.8:.6,'']);
+  const spk=S.lamp=='none'?null:R[S.lamp];
+  POS=pos;S.players.forEach(p=>{const[x,y,s,r]=pos[p.id],fl=pap.some(a=>a.t==p.id&&t0-a.s>550)?Math.sin(t/20)*4:0;hero(p.hero,x+fl,y,s,t,p.id==spk&&!lob,r=='Судья');if(p.penAt>t0){cx.fillStyle='#e4572e';tri(x-14*s,y-26*s,x+14*s,y-26*s,x,y-72*s)}});
+  if(!lob){if(R.witness){cx.fillStyle='#94624a';cx.fillRect(148,342,64,34);cx.fillStyle='#b57a5a';cx.fillRect(144,338,72,8)}cx.fillStyle='#94624a';cx.fillRect(126,200,108,40);cx.fillStyle='#b57a5a';cx.fillRect(118,194,124,10);
+   [[4,150],[210,146]].forEach(([x,w])=>{cx.fillStyle='#b57a5a';cx.fillRect(x,296,w,10);cx.fillStyle='#94624a';cx.fillRect(x+4,304,w-8,40)});
+   [[75,'pros','#ff4d4d',301],[285,'def','#4da3ff',301],[180,'witness','#5fd18a',347]].forEach(([x,k,c,y])=>{cx.fillStyle=S.lamp==k?c:'#3a2a33';cx.beginPath();cx.arc(x,y,6,0,7);cx.fill()})}
+  const LY={Судья:250,Прокурор:322,Потерпевший:322,Обвиняемый:322,Адвокат:322,Свидетель:358,Журналист:204,Пристав:204};S.players.forEach(p=>{const[x,y,s,r]=pos[p.id];cx.fillStyle='#fbf1de';cx.font='800 9px Nunito,sans-serif';if(r&&!lob){cx.fillText(r,x,LY[r]);cx.fillText(p.name,x,LY[r]+11)}else cx.fillText(p.name,x,y+(lob?52:30))});
+  S.players.forEach(p=>{const b=bub[p.id];if(b&&b.u>Date.now()){const[x,y,s]=pos[p.id];bubble(x,y-34*s-8,b.t)}});
+  if(S.phase=='verdict'&&S.verdict){const g=S.verdict.guilty,w=g?'ВИНОВЕН':'НЕВИНОВЕН';cx.save();cx.translate(180,150);cx.rotate(-.15);cx.font='900 34px Nunito,sans-serif';cx.fillStyle=g?'#e4572e':'#4cb5ae';cx.strokeStyle='#fff';cx.lineWidth=4;cx.strokeText(w,0,0);cx.fillText(w,0,0);cx.restore()}
+  [['obj','ПРОТЕСТУЮ!','#e4572e'],['lie','ВРАНЬЁ!','#f2b32c'],['hush','ТИШИНА!','#f2b32c'],['fine','ШТРАФ','#e4572e']].forEach(([k,w,c])=>{const d=Date.now()-fx[k];if(d<1600){cx.save();cx.translate(180+Math.sin(d/25)*3,230);cx.rotate(.1);cx.font='900 38px Nunito,sans-serif';
+   cx.fillStyle=c;cx.strokeStyle='#fff';cx.lineWidth=5;cx.strokeText(w,0,0);cx.fillText(w,0,0);cx.font='800 12px Nunito,sans-serif';cx.fillStyle='#fff';cx.fillText(fx.by,0,18);cx.restore()}})}
+ const dx=334,dy=398;el(dx,dy+6,15,10,'#b07a4a');el(dx-13,dy-4,9,8,'#b07a4a');el(dx-19,dy-8,3,6,'#7a4a2a');el(dx-16,dy-6,1.3,1.3,'#1a1a24');
+ cx.strokeStyle='#b07a4a';cx.lineWidth=4;cx.lineCap='round';cx.beginPath();cx.moveTo(dx+13,dy+2);cx.lineTo(dx+22,dy-6+Math.sin(t/120)*5);cx.stroke();
+ if(pets>t0){cx.font='16px sans-serif';cx.fillText('❤',dx-10,dy-14-(2000-(pets-t0))/40)}
+ pap=pap.filter(a=>t0-a.s<900);pap.forEach(a=>{const f=POS[a.f],q=POS[a.t],k=(t0-a.s)/550;if(f&&q&&k<1)el(f[0]+(q[0]-f[0])*k,f[1]+(q[1]-f[1])*k-Math.sin(k*Math.PI)*40,5,5,'#fff')});
+ if(fx.news&&fx.news.u>t0){cx.fillStyle='#e4572e';cx.fillRect(0,0,360,24);cx.fillStyle='#fff';cx.font='900 11px Nunito,sans-serif';cx.fillText('СРОЧНО: '+fx.news.t.slice(0,48),180,16)}
+ cx.fillStyle='#94624a';cx.fillRect(0,420,360,20)}
+cv.addEventListener('click',e=>{const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*360,y=(e.clientY-r.top)/r.height*440;if(Math.hypot(x-334,y-398)<34)tx('pet')});
+requestAnimationFrame(draw);render();
+</script></body></html>
